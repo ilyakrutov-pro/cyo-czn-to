@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block body_class %}display-page{% endblock %}
+{% block content %}
+<div class="display-layout">
+  <section class="display-queue">
+    <div class="display-heading">
+      <div>
+        {% if settings.get('logo_url') %}<img class="display-logo" src="{{ settings.get('logo_url') }}" alt="Логотип">{% endif %}
+        <div class="eyebrow">{{ settings.get('display_title', 'Электронная очередь') }}</div>
+        <h1>Текущие вызовы</h1>
+      </div>
+      <div class="display-tools"><div class="clock" id="clock"></div><button type="button" class="display-sound-toggle hidden" id="display-sound-toggle">🔊 Включить звук</button></div>
+    </div>
+    <div id="display-current" class="display-current"></div>
+    <section class="display-waiting">
+      <div class="display-section-heading"><h2>Талоны в ожидании</h2><strong id="display-waiting-count">0</strong></div>
+      <div id="display-waiting-list" class="display-waiting-list"></div>
+    </section>
+    <div class="display-recent"><h2>Последние вызовы</h2><div id="display-recent-list" class="recent-grid"></div></div>
+  </section>
+  <aside class="ad-panel">
+    <div id="ad-content" class="ad-content"><div class="ad-placeholder">Добро пожаловать</div></div>
+    <div class="ad-progress"><span id="ad-progress-bar"></span></div>
+  </aside>
+  <div class="display-ticker" aria-label="Информация">
+    <div class="ticker-track"><span>{{ settings.get('display_ticker', 'Пожалуйста, ожидайте вызова на табло.') }}</span><span aria-hidden="true">{{ settings.get('display_ticker', 'Пожалуйста, ожидайте вызова на табло.') }}</span></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let ads = [], adIndex = 0, adTimer;
+const announcedCalls = new Set();
+const pendingAnnouncements = new Map();
+let lastAnnouncementId = null;
+let displayInitialized = false;
+let announcementQueue = Promise.resolve();
+let soundEnabled = true;
+
+const soundButton = document.querySelector('#display-sound-toggle');
+const soundOptions = {gender:'{{ settings.get("voice_gender", "female") }}'};
+window.QueueSounds?.prepare?.();
+
+const callKey = item => `${item.id}:${item.called_at || ''}`;
+
+const setSoundStatus = (enabled, message) => {
+    soundEnabled = enabled;
+    soundButton.textContent = message;
+    soundButton.classList.toggle('sound-ready', enabled);
+    soundButton.classList.toggle('hidden', enabled);
+};
+
+const queueAnnouncement = (item, key) => {
+    if (!window.QueueSounds?.announceTicket) {
+        pendingAnnouncements.set(key, item);
+        setSoundStatus(false, '🔊 Включить звук');
+        return;
+    }
+    announcementQueue = announcementQueue.then(async () => {
+        const ok = await window.QueueSounds.announceTicket(
+            item.ticket_code, item.window_name || 'Окно 1', soundOptions
+        );
+        if (ok === false) {
+            pendingAnnouncements.set(key, item);
+            setSoundStatus(false, '🔊 Включить звук');
+        } else {
+            setSoundStatus(true, '🔊 Звук включён');
+        }
+    }).catch(() => {
+        pendingAnnouncements.set(key, item);
+        setSoundStatus(false, '🔊 Включить звук');
+    });
+};
+
+const flushPendingAnnouncements = () => {
+    const pending = [...pendingAnnouncements.entries()];
+    pendingAnnouncements.clear();
+    pending.forEach(([key, item]) => queueAnnouncement(item, key));
+};
+
+soundButton.onclick = async () => {
+    const ok = await window.QueueSounds?.unlock?.();
+    if (ok) {
+        setSoundStatus(true, '🔊 Звук включён');
+        flushPendingAnnouncements();
+    } else {
+        setSoundStatus(false, '🔊 Повторить включение звука');
+    }
+};
+
+const updateClock = () => {
+    document.querySelector('#clock').textContent =
+        new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+};
+
+const refreshDisplay = async () => {
+    const data = await fetch('/api/queue').then(r => r.json());
+    const current = data.current || [];
+
+    document.querySelector('#display-current').innerHTML = current.length
+        ? current.map(item => `<div class="display-call"><span class="display-ticket">${item.ticket_code}</span><span class="display-window">---> ${item.window_name || 'Окно 1'}</span></div>`).join('')
+        : '<div class="display-empty">Ожидайте вызова</div>';
+
+    const waiting = data.waiting_queue || [];
+    document.querySelector('#display-waiting-count').textContent = data.waiting ?? waiting.length;
+    document.querySelector('#display-waiting-list').innerHTML =
+        waiting.map(item => `<div class="display-call display-waiting-item"><span class="display-ticket">${item.ticket_code}</span><span class="display-waiting-service">${item.short_name || ''}</span></div>`).join('')
+        || '<div class="display-waiting-empty">Все талоны вызваны</div>';
+
+    document.querySelector('#display-recent-list').innerHTML =
+        (data.recent || []).map(item => `<div class="recent-item"><strong>${item.ticket_code}</strong><span>---> ${item.window_name || ''}</span></div>`).join('')
+        || '<div class="display-empty">—</div>';
+
+    const activeKeys = new Set(current.map(callKey));
+    const announcement = data.announcement;
+
+    // При первой загрузке только запоминаем состояние сервера.
+    // Старый последний вызов не должен озвучиваться после F5.
+    if (!displayInitialized) {
+        current.forEach(item => announcedCalls.add(callKey(item)));
+        if (announcement) lastAnnouncementId = announcement.id;
+        displayInitialized = true;
+        return;
+    }
+
+    // Удаляем завершённые вызовы из набора.
+    announcedCalls.forEach(key => {
+        if (!activeKeys.has(key)) {
+            announcedCalls.delete(key);
+            pendingAnnouncements.delete(key);
+        }
+    });
+
+    // Новое announcement обрабатываем первым.
+    // Помечаем соответствующий текущий талон, чтобы не озвучить его дважды.
+    if (announcement && announcement.id !== lastAnnouncementId) {
+        lastAnnouncementId = announcement.id;
+
+        const matchingCurrent = current.find(
+            item => String(item.id) === String(announcement.ticket_id)
+        );
+        if (matchingCurrent) announcedCalls.add(callKey(matchingCurrent));
+
+        const item = {
+            id: announcement.ticket_id,
+            ticket_code: announcement.ticket_code,
+            window_name: announcement.window_name
+        };
+        const key = `announcement:${announcement.id}`;
+
+        if (soundEnabled) queueAnnouncement(item, key);
+        else pendingAnnouncements.set(key, item);
+    }
+
+    // Резервный путь для нового текущего вызова, если announcement не пришёл.
+    current.slice().reverse().forEach(item => {
+        const key = callKey(item);
+        if (!announcedCalls.has(key)) {
+            announcedCalls.add(key);
+            if (soundEnabled) queueAnnouncement(item, key);
+            else pendingAnnouncements.set(key, item);
+        }
+    });
+};
+
+const showAd = () => {
+    if (!ads.length) return;
+    const ad = ads[adIndex % ads.length];
+    const content = ad.media_type === 'video'
+        ? `<video src="${ad.media_url}" autoplay muted loop playsinline></video>`
+        : `<img src="${ad.media_url}" alt="${ad.title}">`;
+    document.querySelector('#ad-content').innerHTML = content + `<div class="ad-title">${ad.title}</div>`;
+
+    const bar = document.querySelector('#ad-progress-bar');
+    bar.style.transition = 'none';
+    bar.style.width = '0';
+    requestAnimationFrame(() => {
+        bar.style.transition = `width ${ad.duration_seconds}s linear`;
+        bar.style.width = '100%';
+    });
+
+    clearTimeout(adTimer);
+    adTimer = setTimeout(() => {
+        adIndex++;
+        showAd();
+    }, ad.duration_seconds * 1000);
+};
+
+const initAds = async () => {
+    ads = await fetch('/api/ads').then(r => r.json());
+    showAd();
+};
+
+updateClock();
+setInterval(updateClock, 1000);
+refreshDisplay();
+setInterval(refreshDisplay, 3000);
+initAds();
+</script>
+{% endblock %}

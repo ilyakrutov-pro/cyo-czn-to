@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block body_class %}ticket-page{% endblock %}
+{% block content %}
+<article class="print-ticket">{% if settings.get('logo_url') %}<img class="ticket-logo" src="{{ settings.get('logo_url') }}" alt="Логотип">{% endif %}<div class="eyebrow">{{ organization_name }}</div><h1>ВАШ ТАЛОН</h1><div class="ticket-number">{{ ticket.ticket_code }}</div><h2>{{ ticket.service_name }}</h2><p>{{ settings.get('ticket_footer', 'Пожалуйста, ожидайте вызова на табло') }}</p><time>{{ ticket.issued_at }}</time></article>
+<div class="print-actions"><button class="primary-button" onclick="window.print()">Печать талона</button><a class="secondary-button" href="/feedback/{{ ticket.ticket_code }}">Оценить обслуживание</a><a class="secondary-button" href="/kiosk">Вернуться к услугам</a></div>
+{% if request.query_params.get('autoprint') == '1' %}
+<script>
+window.addEventListener('load', () => {
+  setTimeout(() => window.print(), 250);
+  window.addEventListener('afterprint', () => setTimeout(() => window.close(), 300));
+});
+</script>
+{% endif %}
+{% endblock %}

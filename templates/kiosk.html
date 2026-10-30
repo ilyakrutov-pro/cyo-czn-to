@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block body_class %}kiosk-page{% endblock %}
+{% block content %}
+<section class="hero kiosk-hero">
+  <div>{% if settings.get('logo_url') %}<img class="kiosk-logo" src="{{ settings.get('logo_url') }}" alt="Логотип">{% endif %}<div class="eyebrow">САМОСТОЯТЕЛЬНАЯ РЕГИСТРАЦИЯ</div><h1>Выберите услугу</h1><p>Нажмите на нужную услугу — система выдаст талон с номером очереди.</p></div>
+  <div class="live-badge"><span class="pulse"></span> Система работает</div>
+</section>
+<section class="service-grid">
+  {% for service in services %}
+  <button class="service-card" style="--service-color: {{ service.color }}" data-service-id="{{ service.id }}"><span class="service-code">{{ service.code }}</span><strong>{{ service.short_name }}</strong><small>{{ service.description }}</small><span class="service-arrow">→</span></button>
+  {% else %}<div class="empty-state">В данный момент услуги недоступны. Обратитесь к администратору.</div>{% endfor %}
+</section>
+<div id="visitor-form-modal" class="modal hidden"><div class="modal-card visitor-card"><button class="modal-close" data-close-visitor>×</button><div class="eyebrow">ДАННЫЕ ПОСЕТИТЕЛЯ</div><h2>Оформление талона</h2><p>Укажите ФИО, документ и номер телефона для оформления обращения.</p><form id="visitor-form" class="visitor-form"><input type="hidden" name="service_id" id="visitor-service-id"><label>ФИО посетителя<input name="full_name" placeholder="Иванов Иван Иванович" required autocomplete="name" maxlength="120"></label><label>Документ<select name="document_type" required><option value="passport">Паспорт</option><option value="inn">ИНН</option><option value="snils">СНИЛС</option></select></label><label>Номер документа<input name="document_number" placeholder="Введите номер" required autocomplete="off"></label><label>Номер телефона<input name="phone" type="tel" placeholder="+7 (___) ___-__-__" required autocomplete="tel"></label><div class="modal-actions"><button type="button" class="secondary-button" data-close-visitor>Отмена</button><button type="submit" class="primary-button">Получить талон</button></div></form></div></div>
+<div id="ticket-modal" class="modal hidden"><div class="modal-card ticket-card"><button class="modal-close" data-close-modal>×</button><div class="eyebrow">ВАШ ТАЛОН</div><div class="ticket-number" id="modal-ticket-code">—</div><div class="ticket-service" id="modal-ticket-service">—</div><p id="modal-print-message">Пожалуйста, возьмите талон и ожидайте вызова.</p><div class="modal-actions"><button class="primary-button" data-close-modal>Готово</button><button class="secondary-button" id="print-ticket">Печать</button></div></div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+let selectedServiceCard = null;
+document.querySelectorAll('.service-card').forEach(card => card.addEventListener('click', () => { selectedServiceCard = card; document.querySelector('#visitor-service-id').value = card.dataset.serviceId; document.querySelector('#visitor-form-modal').classList.remove('hidden'); document.querySelector('#visitor-form input[name="full_name"]').focus(); }));
+document.querySelectorAll('[data-close-visitor]').forEach(button => button.addEventListener('click', () => document.querySelector('#visitor-form-modal').classList.add('hidden')));
+document.querySelector('#visitor-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const values = new URLSearchParams(new FormData(form));
+  const card = selectedServiceCard;
+  document.querySelector('#visitor-form-modal').classList.add('hidden');
+  card.disabled = true;
+  {% if browser_auto_print %}const printWindow = window.open('about:blank', '_blank');{% else %}const printWindow = null;{% endif %}
+  try {
+    const response = await fetch('/api/tickets?' + values.toString(), {method: 'POST'});
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || 'Не удалось выдать талон');
+    document.querySelector('#modal-ticket-code').textContent = data.ticket.ticket_code;
+    document.querySelector('#modal-ticket-service').textContent = data.ticket.service_name;
+    document.querySelector('#modal-print-message').textContent = data.printed ? data.print_message : 'Талон сформирован. При необходимости нажмите «Печать».';
+    document.querySelector('#print-ticket').onclick = () => window.open('/ticket/' + data.ticket.ticket_code + '?autoprint=1', '_blank');
+    if (printWindow) printWindow.location = '/ticket/' + data.ticket.ticket_code + '?autoprint=1';
+    document.querySelector('#ticket-modal').classList.remove('hidden');
+  } catch (error) { if (printWindow) printWindow.close(); alert(error.message); } finally { card.disabled = false; }
+});
+document.querySelectorAll('[data-close-modal]').forEach(button => button.addEventListener('click', () => document.querySelector('#ticket-modal').classList.add('hidden')));
+</script>
+{% endblock %}

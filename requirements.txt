@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+jinja2==3.1.5
+python-multipart==0.0.20
+pyinstaller==6.11.1
+
+# Необязательная печать напрямую в Windows.
+# Если пакет не установлен, система оставляет талон доступным для печати из браузера.
+pywin32==308; platform_system == "Windows"

@@ -1,0 +1,2 @@
+{% extends "base.html" %}
+{% block content %}<div class="auth-card"><div class="eyebrow">ЗАКРЫТАЯ ЗОНА</div><h1>Вход в систему</h1><p>Укажите логин и пароль. Доступ к разделам зависит от роли пользователя.</p><form method="post" action="/login"><input name="username" placeholder="Логин" autofocus required><input type="password" name="password" placeholder="Пароль" required><button class="primary-button" type="submit">Войти</button></form>{% if request.query_params.get('error') %}<div class="form-error">Неверный логин или пароль</div>{% endif %}</div>{% endblock %}

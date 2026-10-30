@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_name }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/extra.css">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <header class="topbar">
+    <a class="brand" href="/kiosk">{% if settings.get('logo_url') %}<img class="site-logo" src="{{ settings.get('logo_url') }}" alt="Логотип">{% endif %}<span>{{ organization_name }}</span></a>
+    <nav>
+      <a href="/kiosk">Киоск</a>
+      <a href="/operator">АРМ оператора</a>
+      <a href="/display">Табло</a>
+      <a href="/admin">Администрирование</a>
+      {% if current_user %}<a href="/logout">Выйти</a>{% endif %}
+    </nav>
+  </header>
+  <main class="page">{% block content %}{% endblock %}</main>
+  <script src="/static/app.js"></script>
+  <script src="/static/sound.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

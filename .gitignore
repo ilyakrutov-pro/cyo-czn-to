@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.spec.bak
+data/queue.db
+data/queue.db-shm
+data/queue.db-wal
+data/media/*
+!data/media/.gitkeep

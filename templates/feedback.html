@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-card feedback-card">
+  {% if not ticket %}<h1>Талон не найден</h1><p>Проверьте номер талона.</p>
+  {% elif request.query_params.get('sent') %}<div class="eyebrow">СПАСИБО</div><h1>Оценка принята</h1><p>Ваш отзыв поможет улучшить качество обслуживания.</p><a class="primary-button" href="/kiosk">Вернуться к киоску</a>
+  {% else %}<div class="eyebrow">ОЦЕНКА ОБСЛУЖИВАНИЯ</div><h1>Как прошёл визит?</h1><p>Талон {{ ticket.ticket_code }} · {{ ticket.service_name }}</p><form method="post" action="/feedback/{{ ticket.ticket_code }}" class="rating-form"><div class="rating-buttons">{% for value in range(5, 0, -1) %}<label><input type="radio" name="rating" value="{{ value }}" required><span>{{ value }}</span></label>{% endfor %}</div><textarea name="comment" placeholder="Комментарий (необязательно)"></textarea><button class="primary-button" type="submit">Отправить оценку</button></form>{% if request.query_params.get('error') %}<div class="form-error">{{ request.query_params.get('error') }}</div>{% endif %}{% endif %}
+</div>
+{% endblock %}
